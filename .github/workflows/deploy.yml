@@ -1,0 +1,108 @@
+name: Publish visitor OS
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the validated build to hyc.ac
+        type: boolean
+        default: true
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: source
+    outputs:
+      source_commit: ${{ steps.lock.outputs.commit }}
+    steps:
+      - name: Check out publishing configuration
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate pinned source
+        id: lock
+        working-directory: .
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const lock = JSON.parse(readFileSync('deployment.json', 'utf8'));
+          assert.equal(lock.repository, 'Hi-Yincan/LifeOS');
+          assert.match(lock.commit, /^[0-9a-f]{40}$/);
+          appendFileSync(process.env.GITHUB_OUTPUT, `repository=${lock.repository}\ncommit=${lock.commit}\n`);
+          NODE
+      - name: Check out exact LifeOS version
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ steps.lock.outputs.repository }}
+          ref: ${{ steps.lock.outputs.commit }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: source/.node-version
+      - run: npm install --global yarn@1.22.22
+      - run: yarn install --frozen-lockfile --ignore-scripts --non-interactive
+      - run: node scripts/product/build.mjs --public
+      - run: yarn lint
+      - run: yarn test:unit
+      - run: yarn test:server
+      - run: yarn playwright install --with-deps chromium
+      - run: yarn playwright test --config=playwright.public.config.ts
+        env:
+          PUBLIC_DEPLOYMENT: '1'
+      - name: Record and verify deployment provenance
+        env:
+          SOURCE_COMMIT: ${{ steps.lock.outputs.commit }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+          const release = JSON.parse(readFileSync('out/release.json', 'utf8'));
+          assert.equal(release.commit, process.env.SOURCE_COMMIT);
+          assert.equal(release.dirty, false);
+          assert.equal(release.mode, 'visitor');
+          release.publisher = { repository: process.env.GITHUB_REPOSITORY, commit: process.env.GITHUB_SHA, runId: process.env.GITHUB_RUN_ID };
+          writeFileSync('out/release.json', JSON.stringify(release, null, 2) + '\n');
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `LifeOS: \`${release.commit}\`\n\nPublisher: \`${release.publisher.commit}\`\n`);
+          NODE
+      - uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: source/out
+          include-hidden-files: true
+          retention-days: 30
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: public-test-results
+          path: |
+            source/playwright-report/
+            source/test-results/
+          retention-days: 14
+
+  deploy:
+    if: inputs.deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy validated artifact
+        id: deployment
+        uses: actions/deploy-pages@v5.0.1
