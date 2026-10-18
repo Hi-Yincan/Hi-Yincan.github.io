@@ -24,7 +24,7 @@ Pages 使用 GitHub Actions 模式，自定义域名在本仓库 Pages 设置中
 
 将 deployment.json 恢复到已验证的 LifeOS SHA，提交 main 后手动发布。已知首次 OS 版本为 `86620989ec6446ab55aba0a16c237a200254bfb1`。产物保留 30 天，部署日志与线上 release.json 用于追踪版本。不要强推 main 或改 DNS 来回退代码。
 
-旧首页 pages-live 分支保留于 LifeOS，此发布仓库没有该分支。生产目前为访客静态版，管理员服务尚未上线。完整范围和限制见 [LifeOS 发布手册](https://github.com/Hi-Yincan/LifeOS/blob/main/specs/deployment/pages.md)。
+旧首页 pages-live 分支保留于 LifeOS，此发布仓库没有该分支。生产使用静态展示版；LifeOS 已取消站点管理员功能，所有浏览者读取相同内容。独立信息源管理与真实看板数据接入继续单独规划。完整范围和限制见 [LifeOS 发布手册](https://github.com/Hi-Yincan/LifeOS/blob/main/specs/deployment/pages.md)。
 
 ## 历史链接
 
